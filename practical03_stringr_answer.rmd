@@ -1,0 +1,112 @@
+---
+title: "Tidyverse strings and regex"
+author: "Elisa Gomez de Lope"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output: html_document
+---
+
+```{r}
+library(stringr)
+library(tidyr)
+```
+
+
+
+> This little tutorial aims to make you familiar with some of the functions of the `stringr` package and a few regular expressions. 
+
+
+
+## Strings and escape sequences  in `r fontawesome::fa(name = "r-project", fill = "steelblue")`
+
+##### Write the sequence `\\ "It's the end of the world!" he said.`. Assign the string to a variable and try `print()`, `cat()` and `writeLines()`.
+
+```{r}
+str <- "\\\\ \"It's the end of the world!\" he said."
+
+print(str)
+cat(str)
+writeLines(str)
+```
+
+
+## `stringr` functions 
+
+Set a character vector in the following way: `vec <- c("Rpl12", "Repn23", "Dec12", "tr44")` 
+
+
+##### Select the entries of the vector that match an "R".
+
+```{r}
+vec <- c("Rpl12", "Repn23", "Dec12", "tr44")
+str_subset(vec, "R")
+```
+
+
+##### Extract the numerical part of gene names.
+
+
+```{r}
+str_extract(vec, "\\d+")
+```
+
+
+
+
+##### `NA` and `str_detect()` 
+
+Add an `NA` to the vector. How will `str_detect()` treat the `NA` value when checking for the presence of "R"?
+
+```{r}
+vec <- c(vec, NA)
+str_detect(vec, "R")
+# The NA is not analyzed by str_detect and remains NA
+```
+
+
+##### Get the length of all gene names.
+
+```{r}
+str_length(vec)
+```
+
+
+
+## Large scale genomics 
+
+Read the genome sequence of the Hepatitis D virus: [hepd.fasta](https://biostat2.uni.lu/practicals/data/hepd.fasta).
+You will learn how to import data right after this practical. For now, just execute the following:
+
+```{r}
+hepd <- vroom::vroom_lines("https://biostat2.uni.lu/practicals/data/hepd.fasta")
+```
+
+##### What is the length of the genome sequence? `r fontawesome::fa("ruler")`
+
+```{r}
+str_length(hepd)
+length(hepd)
+```
+
+
+##### What is the sequence composition?
+
+```{r}
+str_count(hepd, unique(unlist(strsplit(hepd, ""))))
+```
+
+
+
+##### Find all matches of _EcoR1_ in the sequence using `str_locate()`. 
+The cleavage pattern is `GAATTC`. Will this detect all possible matches?  `r fontawesome::fa("cut")`
+
+
+```{r}
+str_locate(hepd, 'GAATTC') # provides the start and end positions of the first occurrence.
+str_locate_all(hepd, 'GAATTC') # provides the start and end positions of all occurrences (matrix), yet in this case apparently it only happens once.
+
+# Now look for the complement reverse sequence as well
+str_locate_all(hepd, c('GAATTC', 'CTTAAG'))
+```
+
+
+

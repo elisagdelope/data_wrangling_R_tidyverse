@@ -1,0 +1,322 @@
+---
+title: "Tidyverse basics with DatasauRus"
+author: "Elisa Gomez de Lope"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output: html_document
+---
+
+This guided practical will demonstrate that the **tidyverse** allows to compute summary statistics and visualize datasets efficiently.
+This dataset is already stored in a **tidy** `tibble`, cleaning steps will come in future practicals.
+
+
+##### Those kind of questions are optional {.bonus}
+
+## `datasauRus` package
+
+- check if you have the package `datasauRus` and `tidyverse` installed
+
+```{r}
+library(datasauRus)
+library(tidyverse)
+```
+
+- should return nothing. If `there is no package called ‘datasauRus’` appears, it means that the package needs 
+to be installed. Use this:
+```{r}
+# install.packages("datasauRus")
+```
+
+
+## Explore the dataset
+
+Since we are dealing with a `tibble`, we can just type
+```{r}
+datasaurus_dozen
+```
+
+only the first **10** rows are displayed.
+
+
+##### What are the dimensions of this dataset? Rows and columns?
+
+- **base** version, using either `dim()`, `ncol()` and `nrow()`
+
+```{r}
+dim(datasaurus_dozen)
+ncol(datasaurus_dozen)
+nrow(datasaurus_dozen)
+```
+
+
+- **tidyverse** version
+
+```{r}
+tibble(datasaurus_dozen)
+```
+
+
+##### Assign the `datasaurus_dozen` to the `ds_dozen` name This aims at populating the **Global Environment**
+
+```{r}
+ds_dozen <- datasaurus_dozen
+```
+
+
+##### Using Rstudio, those dimensions are now also reported within the interface, where?
+
+In the global environment
+
+
+## How many datasets are present?
+
+- **base** version
+
+```{block, opts.label = "tip"}
+you want to count the number of **unique** elements in the column **dataset**.
+The function **length()** returns the length of a vector, such as the unique elements
+```
+
+```{r}
+unique(ds_dozen$dataset) %>% length()
+```
+
+
+- **tidyverse** version
+
+```{r}
+# n_distinct counts the unique elements in a given vector.
+# we use summarise to return only the desired column named n here.
+summarise(ds_dozen, n = n_distinct(dataset))
+```
+
+- even better way, compute and display the number of lines per `dataset`
+
+```{block, opts.label = "tip"}
+the function `count` in `dplyr` does the `group_by()` by the specified column + `summarise(n = n())` which returns the number of observation per defined group.
+```
+
+```{r}
+count(ds_dozen, dataset)
+
+```
+
+
+
+## Check summary statistics per dataset
+
+##### Compute the mean of the `x` & `y` column. For this, you need to `group_by()` the appropriate column and then `summarise()`
+
+```{block, opts.label = "tip"}
+in `summarise()` you can define as many new columns as you wish. No need to call it for every single variable.
+```
+
+```{r message=TRUE, warning=TRUE, include=FALSE, paged.print=FALSE}
+ds_dozen %>%
+  group_by(dataset) %>%
+  summarise(mean_x = mean(x),
+            mean_y = mean(y))
+```
+
+
+```{r message=TRUE, warning=TRUE, include=FALSE, paged.print=FALSE}
+ds_dozen %>%
+  group_by(dataset) %>%
+  summarise(sd_x = sd(x),
+            sd_y = sd(y))
+```
+
+
+
+##### Compute both mean and standard deviation (sd) in one go using `across()` {.bonus}
+
+
+```{r}
+ds_dozen %>%
+  group_by(dataset) %>%
+  # across works with first on which columns and second on what to perform on selection
+  # 2 possibilities to select columns
+  # summarise(across(where(is.double), list(mean = mean, sd = sd)))
+  summarise(across(c(x, y), list(mean = mean, sd = sd)))
+```
+
+
+##### What can you conclude?
+
+They look all similar based on summary stats. The mean and sd are the same in all datasets.
+
+## Plot the _datasauRus_
+
+##### Plot the `ds_dozen` with `ggplot` such the **aesthetics** are `aes(x = x, y = y)` 
+with the **geometry** `geom_point()`
+
+```{block, opts.label = "tip"}
+the `ggplot()` and `geom_point()` functions must be linked with a **+** sign
+```
+
+```{r}
+ds_dozen %>%
+  ggplot(aes(x=x, y =y)) +
+  geom_point()
+```
+
+
+##### Reuse the above command, and now colored by the `dataset` column
+
+```{r}
+ds_dozen %>%
+  ggplot(aes(x=x, y =y, colour=dataset)) +
+  geom_point()
+
+```
+
+
+Too many datasets are displayed.
+
+##### How can we plot only one at a time?
+
+```{block, opts.label = "tip"}
+You can filter for one dataset upstream of plotting
+```
+
+```{r}
+ds_dozen %>%
+  filter(dataset=='away') %>%
+  ggplot(aes(x=x, y =y, colour=dataset)) +
+  geom_point()
+
+```
+
+
+##### Adjust the **filtering** step to plot two datasets
+
+```{block, opts.label = "tip"}
+R provides the inline instruction `%in%` to test if there a match of the left operand in the right one (a **vector** most probably)
+```
+
+```{r}
+ds_dozen %>%
+  filter(dataset %in% c('away', 'bullseye')) %>%
+  ggplot(aes(x=x, y =y, colour=dataset)) +
+  geom_point()
+```
+
+
+##### Expand now by getting one `dataset` per **facet**
+
+Facet is applied in order to split the plots and separate datasets according to a variable.
+```{r}
+ds_dozen %>%
+  filter(dataset %in% c('away', 'bullseye')) %>%
+  ggplot(aes(x=x, y =y, colour=dataset)) +
+  geom_point() +
+  facet_wrap(~ dataset)
+
+```
+
+
+##### Remove the filtering step to facet all datasets
+
+```{r, fig.height=8, fig.width=10}
+ds_dozen %>%
+  ggplot(aes(x=x, y =y, colour=dataset)) +
+  geom_point() +
+  facet_wrap(~ dataset)
+
+```
+
+
+
+##### Tweak the theme and use the `theme_void` and remove the legend
+
+```{r, fig.height=8, fig.width=10}
+ds_dozen %>%
+  ggplot(aes(x=x, y =y)) +
+  geom_point() +
+  facet_wrap(~ dataset)+
+  theme_void()
+
+```
+
+
+##### Are the datasets actually that similar?
+
+No, the summary stats can be misleading
+
+
+```{block, opts.label = "tip"}
+the R package [`gifski`](https://cran.r-project.org/web/packages/gifski/index.html) could be installed on your machine, makes the GIF creation faster.
+`gifski` is internally written in `rust`, and this language needs `cargo` to run. See this [article](https://github.com/r-rust/hellorust#installation) to get it installed on your machine.
+First install `rust` before install the R package `gifski`.
+Please note, that the `animate()` step still takes ~ 3-5 minutes depending on your machine.
+```
+
+##### Install `gganimate`, its dependencies will be automatically installed. {.bonus}
+
+```{r}
+# install.packages("gganimate")
+# install.packages("rust")
+# install.packages("gifski")
+```
+
+
+##### Use the `dataset` variable to the `transition_states()` argument layer {.bonus}
+
+```{r}
+library(gganimate)
+
+ds_dozen %>%
+  ggplot(aes(x = x, y = y)) +
+  geom_point() +
+  # transition will be made using the dataset column
+  transition_states(dataset, transition_length = 5, state_length = 2) +
+  # for a firework effect!
+  shadow_wake(wake_length = 0.05) +
+  labs(title = "dataset: {closest_state}") +
+  theme_void(14) +
+  theme(legend.position = "none") -> ds_anim
+# more frames to slow down the animation
+ds_gif <- animate(ds_anim, nframes = 500, fps = 10, renderer = gifski_renderer())
+ds_gif
+anim_save(title_frame = TRUE, "plots/ds.gif")
+```
+
+
+
+##### Visualize the tiny differences in means for both coordinates {.bonus}
+
+- need to zoom tremendously to see differences. Accumulate all states to better see the motions.
+
+```{r}
+ds_dozen %>%
+  group_by(dataset) %>%
+  summarise(across(c(x, y), list(mean = mean, sd = sd))) %>% 
+  ggplot(aes(x = x_mean, y = y_mean, colour = dataset)) +
+  geom_point(size = 25, alpha = 0.6) +
+  # zoom in like crazy
+  coord_cartesian(xlim = c(54.25, 54.3), ylim = c(47.75, 47.9)) +
+  # animate
+  transition_states(dataset, transition_length = 5, state_length = 2) +
+  # do not remove previous states to pile up dots
+  shadow_mark() +
+  labs(title = "dataset: {closest_state}") +
+  theme_minimal(14) +
+  theme(legend.position = "none") -> ds_mean_anim
+ds_mean_gif <- animate(ds_mean_anim, nframes = 100, fps = 10, renderer = gifski_renderer())
+ds_mean_gif
+anim_save("plots/ds_mean.gif")
+```
+
+
+
+## Conclusion
+
+> never trust summary statistics alone; always visualize your data | Alberto Cairo
+
+**Authors**
+
+- Alberto Cairo, (creator)
+- Justin Matejka
+- George Fitzmaurice
+- Lucy McGowan
+
+from this [post](https://itsalocke.com/datasaurus-now-cran/)

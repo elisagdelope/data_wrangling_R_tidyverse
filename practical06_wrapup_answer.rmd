@@ -1,0 +1,343 @@
+---
+title: "Wrapup Tidyverse"
+author: "Elisa Gomez de Lope"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output: html_document
+---
+
+```{r echo=TRUE, message=TRUE, warning=TRUE, paged.print=FALSE}
+library(tidyverse)
+library(vroom)
+library(here)
+library(ggbeeswarm)
+```
+
+
+
+
+>This practical connects most lectures and practicals covered in the course as they would work together for a typical data analysis with data import, transformation, summarizing and plotting.
+
+# Carbon dixoide plant intake
+
+The dataset is from the paper by **Potvin, C., Lechowicz, M. J. and Tardif, S.** (1990). The statistical analysis of ecophysiological response curves obtained from experiments involving repeated measures., _Ecology_, **71**, 1389–1400. You can find it at this [URL](https://biostat2.uni.lu/practicals/data/CO2.tsv)
+
+## Load the data
+
+##### Load the [dataset](https://biostat2.uni.lu/practicals/data/CO2.tsv), assign the name `plant_CO2`
+
+```{block, opts.label = "tip"}
+Pay attention to use meaningful names. 
+`plant_CO2_url` is a good name for the URL of this dataset.
+`plant_CO2_file` is appropriate for tsv file if you download it.
+```
+
+
+
+
+```{r}
+plant_CO2 <- vroom("data/CO2.tsv", col_types = cols())
+```
+
+## Explore the data
+
+##### How many rows and columns are present? And which data types are they?
+
+There are 84 rows, 5 columns
+Column Plant, Type and Treatment are of type character;
+Column conc, uptake are of type double
+
+
+##### Three columns are categorical, taken together, how many observations have they?
+
+```{block, opts.label = "tip"}
+Using `count()` with the relevant columns is the easiest approach.
+Sorting by the highest number is often a nice way to discover the data.
+This option is available in `count()`
+```
+
+```{r}
+count(plant_CO2)
+
+plant_CO2 %>% 
+   count(Plant, Type, Treatment, sort = T)
+
+```
+
+
+##### How many categories for each of the character columns do you find?
+
+```{block, opts.label = "tip"}
+One option is to find the number of unique values using `n_distinct()`.
+This would have to be done three times, one for each character column. 
+Otherwise, `n_distinct()` can be applied to character columns using
+`across()` and relevant `where()` condition.
+```
+
+```{block, opts.label = "warning"}
+`n_distinct()`, `across()`  are functions that work **inside** `mutate()` or `summarise()`.
+```
+
+```{r}
+plant_CO2 %>%
+   summarise(across(where(is.character), n_distinct))
+
+```
+
+
+##### Rename the columns to make them all lower case and continue with the resulting tibble for the next steps.
+
+```{r}
+plant_CO2 <- rename_with(plant_CO2,
+            stringr::str_to_upper)
+
+
+```
+
+
+
+
+## CO<sub>2</sub> data
+
+The numeric columns are defined as:
+
+- `conc` is ambient carbon dioxide concentrations ($mL/L$).
+- `uptake` is carbon dioxide uptake rates ($umol/m^2$ sec).
+
+##### Compute the mean of `conc` and `uptake` depending on the location (Quebec or Mississippi)
+
+```{block, opts.label = "tip"}
+Ignore the treatment, chilled or / non chilled for now
+```
+
+```{r}
+plant_CO2 %>%
+   group_by(TYPE) %>%
+   summarise(across(where(is.double),list(average = mean)))
+```
+
+
+##### Does the CO<sub>2</sub> concentrations appear different in both locations?
+
+No, same concentrations in both locations
+
+
+##### Compute the mean of `conc` and `uptake` depending on the plant location (`type` column), `plant` and treatment. Add the number of observations per group.
+
+```{block, opts.label = "tip"}
+the number of observations should be **7** everywhere as you saw before
+```
+
+```{r}
+plant_CO2 %>%
+   group_by(TYPE, PLANT, TREATMENT) %>%
+   summarise(across(where(is.double), list(average = mean, n = n_distinct))) %>%
+   select(-UPTAKE_n)
+
+```
+
+
+##### From the summary above, sort the table to show the plant / location / treatment that uptake the most carbon dioxide
+
+```{block, opts.label = "tip"}
+a descending ordering is possible with `desc(mean_uptake)` in the `arrange()` function
+```
+
+
+```{r}
+plant_CO2 %>%
+   group_by(TYPE, PLANT, TREATMENT) %>%
+   summarise(across(where(is.double), list(average = mean, n = n_distinct))) %>%
+   arrange(desc(UPTAKE_average)) %>%
+   select(TYPE,PLANT,TREATMENT, UPTAKE_average)
+
+```
+
+
+It is hard to see if all plants have both treatment, you can pivot the table to find out. Right now the table after summarisation is in the **long** format. Pivoting means converting the table to the **wide format** using the treatment unique values (**chilled** and **nonchilled**) as new columns and filled with the values taken from the `mean_uptake` column.
+
+##### Pivot the table using `plant` and `type` as ids, names from `treatment` and values from the mean of carbon dioxide uptake
+
+```{block, opts.label = "tip"}
+look up the different arguments of the function `tidyr::pivot_wider()`
+```
+
+
+```{r}
+plant_CO2 %>%
+   group_by(TYPE, PLANT, TREATMENT) %>%
+   summarise(across(where(is.double), list(average = mean, n = n_distinct))) %>%
+   arrange(desc(UPTAKE_average)) %>%
+   select(TYPE,PLANT,TREATMENT, UPTAKE_average) %>%
+   pivot_wider(names_from = TREATMENT, values_from = UPTAKE_average)
+```
+
+
+##### What do you conclude, does the same plant have been assessed for both treatment?
+
+My conclusion is that the names in PLANT (i.e. Qn3) already contain the information of TYPE (Q ~ Quebec) and TREATMENT (n ~ nonchilled), besides an identification (3). So I think all plants (1, 2, 3) were assessed in both treatments (c,n) and in both locations (Q,M)
+
+
+## Visualize the location and CO<sub>2</sub> uptake
+
+Numbers are nice but plotting the data might better reveal how location and treatment relate.
+
+##### Plot the CO<sub>2</sub> uptake in function of plant location, using violin plots filled by treatment {.bonus}
+
+```{r}
+plant_CO2 %>%
+   select(TYPE, UPTAKE, TREATMENT) %>%
+   ggplot(aes(x = TYPE,
+              y = UPTAKE)) +
+   geom_violin(aes(fill = TREATMENT), trim=F)
+```
+
+
+As a motivation, here is one version of the plot:
+
+
+
+# Loading qPCR data from multiple files
+
+- Download a set of qPCR experiments results [here as a zip archive](https://biostat2.uni.lu/practicals/data/pcr.zip) to the `data` sub-folder.
+- Decompress the zip archive to the `data` sub-folder of your project.
+
+```{block, title = "test", opts.label = "tip"}
+You can run the following command in R to decompress the file:
+
+~~~r
+unzip(here::here("data", "pcr.zip"), exdir = "data/pcr")
+~~~
+
+This will create a sub-folder `data/pcr` and extract the files there.
+```
+
+
+These qPCR results were obtained from 2 different samples and were replicated 5 times each. They are stored in **10** different files. A filename looks like `mlc1_1.csv` where
+
+- the first number is the **sample id**
+- the second the **replicate id**.
+
+#### Check that your file locations are correct
+
+```{r}
+dir(here::here("data", "pcr"), full.names = FALSE)
+```
+
+
+## Read in the qPCR results
+
+
+The files exhibits a `csv` extension: you might think that the delimiter is a comma.
+
+Let `vroom` doing the job for us.
+
+##### Use `vroom` to import the file `mlc1_1.csv`
+
+```{r}
+vroom("data/pcr/mlc1_1.csv")
+```
+
+The delimiter was a space (" ")
+
+
+## Get a single tibble tidy out of all files
+
+Instead of getting a list of multiple tibbles we can bind them altogether to create a single one.
+
+`vroom` can actually achieve this if the input is a list of file paths, it merges them into **one** `tibble` **and** allows for keeping track of the **filename**.
+
+An optional `id` option allows to save the `path` to keep track of the file of origin. Let's name this `id` column `"file"` and save the resulting tibble of 96x10 rows as `pcr_data`
+
+##### Use `dir()` to create a vector named `pcr_files` which contains the path to all 10 data files
+
+```{block, opts.label = "tip"}
+You can get some help using `?dir` in particular to adjust the `full.names` argument to `TRUE`.
+
+Then, we obtain the full path to each file, necessary to access the data.
+```
+
+```{r}
+vroom(dir(path = "data/pcr", full.names = T), id = "file")
+#vroom(fs::dir_ls("data/pcr/", full.names = T), id = "file") also worked
+
+```
+
+
+##### Read all 10 files at once with `vroom`, using `id = "file"` to add filenames as an extra column. Assign the name `pcr_data`
+
+```{r}
+pcr_data <- vroom(dir(path = "data/pcr", full.names = T), id = "file")
+
+```
+
+
+##### Is this dataset tidy?
+
+No, samples and replicates should have their own column
+
+
+##### Extract the sample (`mlc1` or `mlc2`) and replicate number (1 to 5) into dedicated columns, assign the name `pcr_data_tidy`
+
+```{block, opts.label = "tip"}
+Several options to achieve this are available. The most elegant is `str_extract()` with appropriate regular expressions. You can also get rid of the `file` column afterwards.
+
+But extracting the filenames without extension and use `separate()` is also an alternative. 
+
+For the regular expression, if you want to extract the digit **after** the `_` you can use the positive look-behind assertion: `"(?<=_)\\d"`
+```
+
+
+```{r}
+pcr_data_tidy <- pcr_data %>%
+   mutate(sample = str_extract(file, ".{3}[0-9]{1}"),
+          replicate = str_extract(file, "(?<=_)\\d+")) %>%
+   select(-file)
+```
+
+
+
+Of note, the resulting **tidy** `tibble` should be:
+
+```
+# A tibble: 960 x 7
+   well  gene      Ct type  flag  sample replicate
+   <chr> <chr>  <dbl> <chr> <chr> <chr>  <chr>    
+ 1 A1    gene1   33.6 data  OK    mlc1   1        
+ 2 A2    gene2   22.4 data  OK    mlc1   1        
+ 3 A3    gene3   31.8 data  OK    mlc1   1        
+ 4 A4    gene4   30.2 data  OK    mlc1   1        
+ 5 A5    gene5   33.1 data  OK    mlc1   1        
+ 6 A6    gene6   33.8 data  OK    mlc1   1        
+ 7 A7    gene7   31.0 data  OK    mlc1   1        
+ 8 A8    gene8   16.3 data  OK    mlc1   1        
+ 9 A9    gene9   32.6 data  OK    mlc1   1        
+10 A10   gene10  30.1 data  OK    mlc1   1        
+# … with 950 more rows
+```
+
+##### Check that for both samples, all `flag` are **OK** by counting them
+
+```{r}
+pcr_data_tidy %>%
+   group_by(sample) %>%
+   count(flag)
+```
+
+
+##### Now that the data is tidy, plot the distribution of Ct values
+
++ `replicate` on the x-axis
++ `sample` as facet (2 columns)
++ geometries, you can combine both a violin plot and the `ggbeeswarm::geom_quasirandom`
+
+```{r}
+pcr_data_tidy %>%
+   ggplot(aes(x = replicate,
+              y = Ct)) +
+   geom_violin(trim = F) +
+   facet_wrap(~ sample) +
+   ggbeeswarm::geom_quasirandom(aes(alpha = 0.6))
+
+```
+
+

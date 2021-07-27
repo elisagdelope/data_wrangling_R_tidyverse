@@ -1,0 +1,183 @@
+---
+title: "Tidyverse - dplyr"
+author: "Elisa Gomez de Lope"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output: html_document
+---
+
+```{r echo=TRUE, message=TRUE, warning=TRUE, paged.print=TRUE}
+library(dplyr)
+library(vroom)
+library(stringr)
+library(tidyr)
+```
+
+
+## ENSEMBL genes
+This short tutorial will allow you to explore `dplyr` functionality based on the previous lecture. Every question can be answered with a combination of `%>%` pipes. You should refrain from using temporary variables and statements outside of the range of the tidyverse.  
+
+##### Import the [data from the website](https://rworkshop.uni.lu/lectures/data/gene_by_exon.csv). Assign to the name `genes_by_transcripts`
+
+```{r}
+genes_by_transcripts <- vroom("data/gene_by_exon.csv",
+                              col_types = cols())
+```
+
+
+##### Use `glimpse()` to identify columns and column types.
+
+##### Extract the processed pseudogenes from the `genes_by_transcripts` data set. Identify how pseudogenes are coded. Store the results in a tibble `pseudogenes`.
+
+```{r}
+glimpse(genes_by_transcripts) # general overview
+
+genes_by_transcripts %>% distinct(gene_biotype) # provides which biotypes of genes are there in the tibble
+
+pseudogenes <- genes_by_transcripts %>%
+filter(gene_biotype  == 'processed_pseudogene') # retrieve processed_pseudogene labelled genes
+```
+
+
+##### Extract a unique set of gene ids without redundancy of transcripts. Store the results in a tibble called `genes` that contains all columns but `ensembl_transcript_id`.
+
+```{r}
+genes <- genes_by_transcripts %>%
+  distinct(ensembl_transcript_id, .keep_all = TRUE) %>% # selects unique ensembl_transcript_id while showing all columns
+  select(-ensembl_transcript_id) # removes column ensembl_transcript_id
+```
+
+
+##### Are there more than one HGNC gene name per `ensembl_gene_id`?
+
+```{r}
+genes_by_transcripts %>%
+  select(ensembl_gene_id, hgnc_id) %>% # select columns of interest: ensemble_gene_id and hgnc_id
+  distinct() %>% # remove duplicated entries (where both columns are duplicated)
+  count(ensembl_gene_id) %>% # make count per each ensemble_gene_id 
+  filter(n>1) # filter those counts larger than 1
+```
+Yes, there are more than one HGNC id per `ensembl_gene_id`
+
+##### Sort the genes by their length (ascending order)
+
+```{r}
+genes_by_transcripts %>%
+  mutate(length = end_position - start_position) %>%
+  arrange(length)
+```
+
+
+##### Calculate the average length per gene by `gene_biotype`.
+
+```{r}
+genes_by_transcripts %>%
+  mutate(length = end_position - start_position) %>%
+  group_by(gene_biotype) %>%
+  summarise(mean_length = mean(length))
+```
+
+
+##### Calculate the total number of genes and their average length by `gene_biotype`.
+
+```{r}
+genes_by_transcripts %>%
+  mutate(length = end_position - start_position) %>%
+  group_by(gene_biotype) %>%
+  summarise(mean_length = mean(length),
+            n_genes = n())
+```
+
+
+
+## `tidyr` exercise - Cholesterol measurements as visits
+
+##### Convert the *chol_by_visit* tibble to wide format such that the values in `chol` are mapped as values in  columns `visit`
+
+Note that for `1L` *L* only specifies integers. 
+
+```{r}
+chol_by_visit <- tribble(
+  ~sampleid, ~visit, ~chol,
+  "S1", 1L, 120.0,
+  "S1", 2L, 178,
+  "S2", 1L, 180,
+  "S2", 2L, 221,
+  "S2", 3L, 240,
+  "S3", 1L, 122,
+  "S3", 2L, 160,
+  "S3", 3L, 154
+)
+```
+
+The result should look like this:
+
+
+sampleid | 1  | 2 | 3
+---------|----|---|---
+S1       | 120|178| NA
+
+
+```{r}
+chol_by_visit %>%
+  pivot_wider(names_from = visit, values_from = chol)
+
+```
+
+
+##### Clean the table of *variants* such that all variants appear as a column labeled by their position.  
+
+```{r}
+variants <- tribble(
+  ~sampleid, ~var1, ~var2, ~var3,
+  "S1", "A3T", "T5G", "T6G",
+  "S2", "A3G", "T5G", NA,
+  "S3", "A3T", "T6C", "G10C",
+  "S4", "A3T", "T6C", "G10C"
+)
+```
+
+
+```{r}
+variants %>%
+  pivot_longer(cols = starts_with("var"), names_to = "vars")
+```
+
+
+#### Select relevant variants
+
+Damaging variants are indicated with *D*. 
+
+##### Select the subjects via table *variants* that carry variants labeled as *damaging* as a vector.
+
+```{r}
+variant_significance <- tribble(
+  ~variant, ~significance,
+  "A3T", "U",
+  "A3G", "D",
+  "T5G", "B",
+  "T6G", "D",
+  "T6C", "B",
+  "G10C", "U"
+)
+```
+
+```{r}
+variants %>%
+  pivot_longer(cols = starts_with("var"), names_to = "vars") %>%
+  left_join(variant_significance,
+            by = c(value = "variant")) %>%
+  filter(significance == "D") %>%
+  select(sampleid)
+```
+
+
+##### Try using semi-join to achieve the same result. {.bonus}
+
+```{r}
+variants %>%
+  pivot_longer(cols = starts_with("var"), names_to = "vars") %>%
+  semi_join(variant_significance %>% filter(significance == "D"), 
+            by = c(value = "variant")) %>%
+  select(sampleid)
+```
+

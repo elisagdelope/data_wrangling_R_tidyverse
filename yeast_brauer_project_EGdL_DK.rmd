@@ -1,0 +1,352 @@
+---
+title: "Yeast transcriptomics analysis with Tidyverse"
+author: "Elisa Gomez de Lope & Dominika Klimek"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output: html_document
+---
+  
+> Objective: summarise a large transcriptomics study using linear regressions. Experience how wrangling real data can actually take 80% of the analysis job.
+
+# Yeast data
+
+In [2008, Brauer et al.](http://www.molbiolcell.org/content/19/1/352.abstract) used microarrays to test the effect of starvation on the growth rate of yeast. 
+For example, they limit the yeast's supply of glucose (sugar to metabolize into energy), leucine (an essential amino acid), or of ammonia (a source of nitrogen) and assess how yeast cells reacted to this stress, how they adapt certain genes expression.
+Brauer _et al_, tested several growth rates in their chemostat, which means that the lower the growth rate is, the more severe the starvation for a nutrient is.
+
+
+```{r}
+library(vroom)
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(ggplot2)
+```
+
+## Retreive the data
+
+##### Download [`Brauer2008_DataSet1.tds`](https://biostat2.uni.lu/projects/data/Brauer2008_DataSet1.tds) inside a `data` folder you should create.
+
+Load the [`Brauer2008_DataSet1.tds`](https://biostat2.uni.lu/projects/data/Brauer2008_DataSet1.tds) file as a `tibble` named `original_data`. 
+This is the exact data that was published with the paper (though for some reason the link on the journal's page is broken).
+It thus serves as a good example of tidying a biological dataset "found in the wild".
+
+
+```{r}
+original_data <- vroom("data/Brauer2008_DataSet1.tds", col_types = cols())
+```
+
+
+## Tidying the data
+
+##### Have a look at the dataset. Is the data "tidy"?
+
+
+```{r}
+glimpse(original_data)
+```
+
+No, the data is not tidy.
+Heterogeneous data corresponding to different variables are stored in the NAME column. Additionally, sample names should be all rows entries in the same column instead of being one column each.
+
+
+
+
+
+
+#### Many variables are stored in one column `NAME`
+
+* **Gene name** e.g. _SFB2_. Note that not all genes have a name.
+* **Biological process** e.g. "proteolysis and peptidolysis"
+* **Molecular function** e.g. "metalloendopeptidase activity"
+* **Systematic ID** e.g. _YNL049C_. Unlike a gene name, every gene in this dataset has a systematic ID.
+* **Another ID number** e.g. `1082129`. We don't know what this number means, and it's not annotated in the paper. Oh, well, we will discard it eventually.
+
+##### Use the appropriate `tidyr` function to split these values and generate a column for each variable. Save as `cleaned_data`
+
+```{block, opts.label = "tip"}
+Preferred names for new columns are;
+
+* "name"
+* "BP"
+* "MF"
+* "systematic_name"
+* "number"
+
+Special characters such as pipes (`|`) must be despecialized as they have a specific meaning. 
+In R, you **have** to use 2 backslashes like `\\|` for one pipe `|`
+```
+
+
+```{r}
+cleaned_data <- original_data %>%
+   separate(NAME,
+            c("name", "BP", "MF", "systematic_name", "number"),
+            sep = "\\|\\|",
+            convert=TRUE)
+
+cleaned_data
+
+#cleaned_data %>%
+#   filter(systematic_name == " YNL049C ") # need some trimming
+```
+
+
+Once you separated the variables delimited by two "`||`", check closer the new values: You will see that in columns like `systematic_name`, `BP` etc 
+values are surrounded by white-spaces which might be inconvenient during the subsequent use. 
+
+For example, on the data below
+
+```
+# A tibble: 5,537 x 44
+   GID    YORF  name  BP    MF    systematic_name number GWEIGHT G0.05  G0.1 [...]
+   <chr>  <chr> <chr> <chr> <chr> <chr>           <chr>    <int> <dbl> <dbl> [...]
+ 1 GENE1… A_06… "SFB… " ER… " mo… " YNL049C "     " 108…       1 -0.24 -0.13 [...]
+ 2 GENE4… A_06… ""    " bi… " mo… " YNL095C "     " 108…       1  0.28  0.13 [...]
+ 3 GENE4… A_06… "QRI… " pr… " me… " YDL104C "     " 108…       1 -0.02 -0.27 [...]
+ [...]
+ ```
+
+ the test `systematic_name == "YNL049C"` is **FALSE** while `systematic_name == " YNL049C "` is **TRUE**
+
+
+
+##### Remove the white spaces that start and end strings in the columns `name` to `number`. Save as `cleaned_ws_data`
+
+```{block, opts.label = "tip"}
+`dplyr` allows us to apply a function (in our case `str_trim()`) to selected columns using `across()`.
+To remove these white-spaces, `stringr` provides a function called `str_trim()`. Let's test how the function works:
+```
+
+
+```{r trimws demo}
+stringr::str_trim(" Removing whitespaces at both ends ")
+```
+
+```{r}
+cleaned_ws_data <- cleaned_data %>%
+   mutate(across(c("name", "BP", "MF", "systematic_name", "number"), str_trim)) 
+
+cleaned_ws_data
+```
+
+
+
+##### We are not going to use every column of the dataframe. Remove the unnecessary columns: `number`, `GID`, `YORF` and `GWEIGHT`. Save as `cleaned_ws_data`
+
+```{r}
+cleaned_ws_data <- cleaned_ws_data %>%
+   select(-c("GID", "YORF", "GWEIGHT", "number"))
+
+cleaned_ws_data
+```
+
+
+##### Do you think that our dataset is now **tidy**?
+
+No, the dataset is not tidy yet because the samples are still all in columns instead of observations in a 'sample' column.
+
+
+##### Column names must not contain values, pivot the tibble so each column represents a variable. Save as `cleaned_data_melt`
+
+```{block, opts.label = "tip"}
+At this point we are storing the sample name (will contain `G0.05` ...) as a new column `sample` and values in a column named `expression`.
+```
+
+```{r}
+cleaned_data_melt <- cleaned_ws_data %>%
+   pivot_longer(cols = matches("^[A-Z]\\d\\.\\d+$"), names_to = "sample", values_to = "expression")
+
+cleaned_data_melt
+```
+
+
+##### Observe the `sample` column, print the unique values of this column.
+
+```{r}
+cleaned_data_melt %>%
+   distinct(sample)
+```
+
+
+We are again facing the problem that two variables are stored in a single column. The `nutrient` (`G`, `N` etc.) is the first character, then the `growth rate`.  
+
+##### Use the same function as before to split the `sample` column into two variables `nutrient` and `rate`. Save as `cleaned_data_melt`
+
+```{block, opts.label = "tip"}
+Use the appropriate delimitation in `sep` and consider using the `convert` argument. It allows to convert strings to number when relevant like here.
+```
+
+```{r}
+cleaned_data_melt <- cleaned_data_melt %>%
+   separate(sample,
+            c("nutrient", "growth_rate"),
+            sep = 1,
+            convert=TRUE)
+
+cleaned_data_melt
+```
+
+
+#### Turn nutrient letters into more comprehensive words
+
+Right now, the nutrients are designed by a single letter. It would be nice to have the full word instead.
+One could use a full mixture of `if` and `else` such as `if_else(nutrient == "G", "Glucose", if_else(nutrient == "L", "Leucine", etc ...))`
+But, that would be cumbersome. 
+
+##### Using the following correspondences and `dplyr::recode()`, recode all nutrient names with their full explicit names. Save as `cleaned_data_melt_nut`
+
+Here is the list of the **correspondences**:
+
+G = "Glucose", L = "Leucine", P = "Phosphate",
+S = "Sulfate", N = "Ammonia", U = "Uracil"
+
+```{r}
+# cleaned_data_melt_nut <- cleaned_data_melt %>%
+#    mutate(nutrient = recode(nutrient, G = "Glucose", L = "Leucine", P = "Phosphate", S = "Sulfate", N = "Ammonia", U = "Uracil"))
+
+# Or more elegant:
+code <- list(G = "Glucose", 
+         L = "Leucine", 
+         P = "Phosphate",
+         S = "Sulfate", 
+         N = "Ammonia", 
+         U = "Uracil")
+
+cleaned_data_melt_nut <- cleaned_data_melt %>% 
+        mutate(nutrient = recode(nutrient, !!! code))
+
+cleaned_data_melt_nut   
+```
+
+
+
+#### Cleaning up missing data
+
+Two variables must be present for the further analysis:
+
+- gene expression values named as `expression`
+- systematic id (gene ids) named as `systematic_name`
+
+##### Delete observations that are missing or empty (`""`) in any of the two mandatory variables. How many rows did you remove? Save as `cleaned_brauer`
+
+```{r}
+cleaned_brauer <- cleaned_data_melt_nut %>%
+   na_if("") %>% # recode empty strings "" by NAs
+   drop_na(expression, systematic_name)
+
+cleaned_brauer
+
+N1 <- cleaned_data_melt_nut %>% tally()
+N2 <- cleaned_brauer %>% tally()
+N1 - N2
+```
+
+902 rows were removed by deleting observations with missing or empty("") in any of [expression, systematic_name] variables.
+
+##  Representing the data
+
+Tidying the data is a crucial step allowing easy handling and representing.
+
+#### Plot the expression data of the _LEU1_ gene
+
+##### Plot the data for the gene called in `name` _LEU1_ and draw a line for each `nutrient` showing the expression in function of the growth rate.
+
+```{r}
+cleaned_brauer %>%
+   filter(name == "LEU1") %>%
+   ggplot(aes(x = factor(growth_rate),
+              y = expression,
+              colour = nutrient)) +
+   geom_point(size = 2) +
+   geom_line(aes(group = nutrient)) +
+   theme_classic(12) +
+   labs(x = "Growth rate",
+        y = "Expression",
+        color = "Nutrient") +
+   scale_colour_brewer(palette = "Dark2") 
+```
+
+
+#### Plot the expression data of a biological process
+
+For this, we don't need to filter by single gene names as the raw data provides us some information on the biological process for each gene.  
+
+##### Extract all the genes in the **leucine biosynthesis** process (column `BP`) and plot the expression in function of the growth rate for each nutrient. 
+
+```{r}
+cleaned_brauer %>%
+   filter(BP == "leucine biosynthesis") %>%
+   ggplot(aes(x = factor(growth_rate),
+              y = expression,
+              colour = nutrient)) +
+   geom_point(size = 2) +
+   geom_line(aes(group = nutrient)) +
+   theme_classic(12) +
+   labs(x = "Growth rate",
+        y = "Expression",
+        color = "Nutrient") +
+   scale_colour_brewer(palette = "Dark2") +
+   facet_wrap(~name)
+```
+
+
+#### Perform a linear regression in top of the plots
+
+Let's play with the graph a little more. These trends look vaguely linear.  
+
+##### Add a linear regression with the appropriate `ggplot2` function and carefully adjust the `method` argument.
+
+```{r}
+cleaned_brauer %>%
+   filter(BP == "leucine biosynthesis") %>%
+   ggplot(aes(x = growth_rate,
+              y = expression,
+              colour = nutrient)) +
+   geom_point(size = 2) +
+   geom_line(aes(group = nutrient)) +
+   theme_classic(12) +
+   labs(x = "Growth rate",
+        y = "Expression",
+        color = "Nutrient") +
+   scale_colour_brewer(palette = "Dark2") +
+   facet_wrap(~name) +
+   geom_smooth(method = "lm" , formula = 'y ~ x', se = FALSE)
+
+```
+
+
+#### Switch to another biological process
+
+Once the dataset is tidy, it is very easy to switch to another biological process.
+
+##### Instead of the "leucine biosynthesis", plot the data corresponding to "sulfur metabolism".
+
+```{block, opts.label = "tip"}
+you can combine the facet headers using `+` in `facet_wrap()`. 
+Adding the systematic name allows to get a name when the gene name is missing.
+```
+
+```{r}
+cleaned_brauer %>%
+   filter(BP == "sulfur metabolism") %>%
+   ggplot(aes(x = growth_rate,
+              y = expression,
+              colour = nutrient)) +
+   geom_point(size = 2) +
+   geom_line(aes(group = nutrient)) +
+   theme_classic(12) +
+   labs(x = "Growth rate",
+        y = "Expression",
+        color = "Nutrient") +
+   scale_colour_brewer(palette = "Dark2") +
+   facet_wrap(~name + systematic_name) +
+   geom_smooth(method = "lm" , formula = 'y ~ x', se = FALSE)
+```
+
+
+##### What can you conclude from those graphs? How does the yeast cells react to the lack of a specific nutrient?
+
+The expression level of yeast genes is influenced by the supply of basic nutrients. For most genes in leucine biosynthesis and sulfur metabolism pathways, the expression decays as the nutrients (growth rate) increase in a negative linear trend. Though, some biological processes and specifically certain genes are more strongly impacted than others. We would highlight how starvation of leucine, glucose and sulfate correspond to higher expression levels, and this is specially true for genes LEU 1, LEU 2, LEU4, JLP1 and YLL058W. Yeast cells seem to adapt the expression level of these genes in response to the lack or abundance of specific nutrients.
+
+
+> This has been a collaborative project between Elisa Gómez de Lope and Dominika Klimek for the Tidyverse course. We have both worked on each of the questions and shared our results, doubts and comments on each other's version, merging the best of both works into this document.
